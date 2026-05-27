@@ -1,4 +1,3 @@
-```markdown
 # Grok Export Viewer Portable
 
 **A beautiful and convenient offline viewer for a full Grok (xAI) export**
@@ -62,4 +61,3 @@ Open the entire `export_data` folder with one click and view your chats in an in
 ---
 
 **Made especially for those who want to preserve and comfortably read their Grok archive.**
-```
