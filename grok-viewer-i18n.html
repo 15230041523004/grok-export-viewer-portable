@@ -1,0 +1,2379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Grok Export Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; }
+    body { font-family: system-ui, sans-serif; overflow: hidden; }
+
+    .grok-bubble {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 20px 20px 20px 6px;
+    }
+    .user-bubble {
+      background: linear-gradient(135deg, #2563eb, #1e40af);
+      color: white;
+      border-radius: 20px 20px 6px 20px;
+    }
+
+    /* Таблицы */
+    .grok-bubble table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 13.5px;
+      background: #111827;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .grok-bubble th {
+      background: #1e2937;
+      color: #e0e7ff;
+      font-weight: 600;
+      padding: 10px 12px;
+      border-bottom: 2px solid #374151;
+    }
+    .grok-bubble td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #374151;
+    }
+    .grok-bubble tr:last-child td { border-bottom: none; }
+    .grok-bubble tr:nth-child(even) { background: #1e2937; }
+
+    /* Списки */
+    .grok-bubble ul, .grok-bubble ol {
+      padding-left: 26px;
+      margin: 12px 0;
+    }
+    .grok-bubble li {
+      margin: 7px 0;
+      line-height: 1.65;
+    }
+    .grok-bubble ul li::marker { color: #64748b; font-size: 1.1em; }
+
+    /* Код */
+    .grok-bubble pre {
+      background: #111827 !important;
+      border-radius: 12px;
+      margin: 14px 0;
+      padding: 16px !important;
+      font-size: 13.5px;
+      overflow-x: auto;
+    }
+
+    .message-html { max-width: 100%; overflow-x: auto; }
+    .message-html code { white-space: pre-wrap; }
+    .hidden-input { position: fixed; left: -9999px; top: -9999px; width: 1px; height: 1px; opacity: 0; }
+
+    /* Chat list: keep compact, but reveal full title on hover */
+    .chat-item { align-items: flex-start; gap: 10px; }
+    .chat-info { min-width: 0; flex: 1 1 auto; }
+    .chat-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.35;
+    }
+    .chat-date {
+      margin-top: 3px;
+      font-size: 11px;
+      line-height: 1.15rem;
+      color: #71717a;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .chat-item:hover .chat-title,
+    .chat-item:focus-within .chat-title {
+      white-space: normal;
+      overflow: visible;
+      word-break: break-word;
+    }
+    .chat-count { margin-top: 2px; }
+
+    /* Message timestamp */
+    .message-bubble-col {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .message-time {
+      font-size: 11px;
+      line-height: 1rem;
+      color: #71717a;
+      margin-bottom: 6px;
+      padding: 0 4px;
+      user-select: text;
+    }
+
+
+    /* Layout fix v2: app uses the full browser window, not max-w-7xl */
+    .app-shell {
+      width: 100vw;
+      max-width: none !important;
+      height: 100dvh;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      padding: 16px 18px;
+      overflow: hidden;
+    }
+
+    .app-header {
+      flex: 0 0 auto;
+      margin-bottom: 16px;
+    }
+
+    #pickerPanel {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    #mainUI.hidden {
+      display: none !important;
+    }
+
+    #mainUI:not(.hidden) {
+      display: grid !important;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 20px;
+      width: 100%;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    #mainUI.sidebar-hidden:not(.hidden) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    #mainUI.sidebar-hidden .sidebar-card {
+      display: none;
+    }
+
+    .sidebar-card,
+    .content-column {
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #chatList {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none !important;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-right: 4px;
+    }
+
+    #chatHeader {
+      flex: 0 0 auto;
+    }
+
+    #messagesArea {
+      width: 100%;
+      flex: 1 1 auto;
+      min-height: 0 !important;
+      overflow-y: auto;
+      overflow-x: auto;
+      scrollbar-gutter: stable;
+    }
+
+    .message-line {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .message-wrap {
+      min-width: 0;
+      max-width: min(1180px, 96%);
+    }
+
+    @media (max-width: 900px) {
+      .app-shell { padding: 12px; }
+      #mainUI:not(.hidden) { grid-template-columns: 280px minmax(0, 1fr); gap: 12px; }
+      .app-header h1 { font-size: 1.75rem; line-height: 2rem; }
+    }
+
+    /* Dark, thin scrollbars instead of the default bright browser scrollbar */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #3f3f46 transparent;
+    }
+    *::-webkit-scrollbar { width: 8px; height: 8px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb {
+      background: #3f3f46;
+      border-radius: 999px;
+      border: 2px solid transparent;
+      background-clip: content-box;
+    }
+    *::-webkit-scrollbar-thumb:hover { background: #52525b; background-clip: content-box; }
+
+
+    /* Compact layout v4: больше контента на экране без потери читаемости */
+    :root {
+      --page-pad-x: 10px;
+      --page-pad-y: 8px;
+      --panel-radius: 18px;
+      --panel-pad: 10px;
+      --ui-gap: 10px;
+      --sidebar-width: 310px;
+    }
+
+    .app-shell {
+      padding: var(--page-pad-y) var(--page-pad-x) !important;
+    }
+
+    .app-header {
+      gap: 10px !important;
+      margin-bottom: 8px !important;
+      min-height: 44px;
+    }
+    .app-header > div:first-child {
+      width: 44px !important;
+      height: 44px !important;
+      border-radius: 18px !important;
+    }
+    .app-header > div:first-child i {
+      font-size: 28px !important;
+    }
+    .app-header h1 {
+      font-size: 30px !important;
+      line-height: 1.05 !important;
+      letter-spacing: -0.02em;
+    }
+    .app-header p {
+      margin-top: 1px !important;
+      font-size: 13px !important;
+      line-height: 1.15 !important;
+    }
+
+    #pickerPanel {
+      margin-bottom: 0 !important;
+      padding: 24px !important;
+      border-radius: var(--panel-radius) !important;
+    }
+
+    #mainUI:not(.hidden) {
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr) !important;
+      gap: var(--ui-gap) !important;
+    }
+
+    .sidebar-card,
+    #chatHeader,
+    #messagesArea {
+      border-radius: var(--panel-radius) !important;
+    }
+
+    .sidebar-card {
+      padding: var(--panel-pad) !important;
+    }
+
+    .sidebar-card > .font-semibold {
+      margin-bottom: 8px !important;
+      padding-left: 4px !important;
+      padding-right: 4px !important;
+      font-size: 13px !important;
+      line-height: 1.2 !important;
+    }
+
+    #chatSearch {
+      margin-bottom: 8px !important;
+      padding: 7px 12px !important;
+      min-height: 34px !important;
+      border-radius: 14px !important;
+      font-size: 13px !important;
+    }
+
+    #chatList {
+      padding-right: 0 !important;
+    }
+    #chatList > :not([hidden]) ~ :not([hidden]) {
+      margin-top: 4px !important;
+    }
+
+    .chat-item {
+      padding: 8px 10px !important;
+      border-radius: 14px !important;
+      gap: 8px !important;
+      min-height: 42px;
+    }
+    .chat-title {
+      font-size: 14px !important;
+      line-height: 1.25 !important;
+    }
+    .chat-date {
+      margin-top: 2px !important;
+      font-size: 10.5px !important;
+      line-height: 1.05rem !important;
+    }
+    .chat-count {
+      margin-top: 0 !important;
+      padding: 0 6px !important;
+      min-width: 20px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px !important;
+      font-size: 11px !important;
+      line-height: 1 !important;
+    }
+
+    #chatHeader {
+      padding: 10px 14px !important;
+      margin-bottom: var(--ui-gap) !important;
+      min-height: 56px;
+    }
+    #chatTitle {
+      font-size: 18px !important;
+      line-height: 1.2 !important;
+    }
+    #chatMeta {
+      margin-top: 2px;
+      font-size: 11px !important;
+      line-height: 1.1rem !important;
+    }
+    #chatHeader button {
+      padding: 7px 14px !important;
+      border-radius: 14px !important;
+      font-size: 12px !important;
+      line-height: 1.1rem !important;
+    }
+    #chatHeader .flex.gap-2 {
+      gap: 6px !important;
+    }
+
+    #messagesArea {
+      padding: 12px !important;
+      scrollbar-gutter: auto !important;
+    }
+
+    .message-line {
+      margin-bottom: 12px !important;
+    }
+    .message-wrap {
+      gap: 8px !important;
+      max-width: min(1320px, 98.5%) !important;
+    }
+    .message-wrap > .rounded-full {
+      width: 30px !important;
+      height: 30px !important;
+      font-size: 13px !important;
+    }
+    .message-time {
+      margin-bottom: 3px !important;
+      padding: 0 2px !important;
+      font-size: 10.5px !important;
+      line-height: 0.9rem !important;
+    }
+    .message-html {
+      padding: 10px 14px !important;
+      font-size: 13.5px !important;
+      line-height: 1.52 !important;
+    }
+    .grok-bubble,
+    .user-bubble {
+      border-radius: 16px !important;
+    }
+
+    .grok-bubble p,
+    .user-bubble p {
+      margin-top: 0.55em;
+      margin-bottom: 0.55em;
+    }
+    .grok-bubble p:first-child,
+    .user-bubble p:first-child { margin-top: 0; }
+    .grok-bubble p:last-child,
+    .user-bubble p:last-child { margin-bottom: 0; }
+
+    .grok-bubble ul,
+    .grok-bubble ol {
+      padding-left: 20px !important;
+      margin: 8px 0 !important;
+    }
+    .grok-bubble li {
+      margin: 4px 0 !important;
+      line-height: 1.5 !important;
+    }
+    .grok-bubble table {
+      margin: 9px 0 !important;
+      font-size: 13px !important;
+    }
+    .grok-bubble th,
+    .grok-bubble td {
+      padding: 6px 8px !important;
+    }
+    .grok-bubble pre {
+      margin: 9px 0 !important;
+      padding: 12px !important;
+      font-size: 13px !important;
+      border-radius: 10px !important;
+    }
+
+    *::-webkit-scrollbar { width: 6px !important; height: 6px !important; }
+    *::-webkit-scrollbar-thumb { border-width: 1px !important; }
+
+    @media (max-width: 900px) {
+      :root { --sidebar-width: 280px; --ui-gap: 8px; }
+      .app-shell { padding: 8px !important; }
+      .app-header h1 { font-size: 24px !important; }
+      .app-header > div:first-child { width: 38px !important; height: 38px !important; }
+      .app-header > div:first-child i { font-size: 24px !important; }
+    }
+
+
+    /* Ultra compact header v5: no big logo/header, maximum useful viewport */
+    :root {
+      --page-pad-x: 6px;
+      --page-pad-y: 4px;
+      --ui-gap: 8px;
+      --sidebar-width: 300px;
+      --panel-radius: 14px;
+      --panel-pad: 8px;
+    }
+
+    .app-shell {
+      padding: var(--page-pad-y) var(--page-pad-x) !important;
+    }
+
+    .app-header {
+      min-height: 22px !important;
+      height: 22px !important;
+      margin: 0 0 4px 0 !important;
+      padding: 0 !important;
+      gap: 0 !important;
+      flex: 0 0 22px !important;
+      overflow: hidden;
+    }
+
+    .app-title-wrap {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+      height: 22px;
+    }
+
+    .app-header h1 {
+      margin: 0 !important;
+      padding: 0 !important;
+      font-size: 16px !important;
+      line-height: 22px !important;
+      font-weight: 750 !important;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+    }
+
+    .app-header p {
+      margin: 0 !important;
+      padding: 0 !important;
+      font-size: 11px !important;
+      line-height: 22px !important;
+      color: #34d399 !important;
+      opacity: 0.9;
+      white-space: nowrap;
+    }
+
+    #mainUI:not(.hidden) {
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr) !important;
+      gap: var(--ui-gap) !important;
+    }
+
+    .sidebar-card {
+      padding: 8px !important;
+    }
+
+    .sidebar-card > .font-semibold {
+      margin-bottom: 6px !important;
+    }
+
+    #chatSearch {
+      margin-bottom: 6px !important;
+      min-height: 32px !important;
+      padding: 6px 11px !important;
+    }
+
+    .chat-item {
+      padding: 7px 9px !important;
+      min-height: 38px !important;
+      border-radius: 12px !important;
+    }
+
+    #chatHeader {
+      padding: 8px 12px !important;
+      min-height: 46px !important;
+      margin-bottom: var(--ui-gap) !important;
+      border-radius: var(--panel-radius) !important;
+    }
+
+    #chatTitle {
+      font-size: 17px !important;
+      line-height: 1.15 !important;
+    }
+
+    #chatMeta {
+      margin-top: 1px !important;
+    }
+
+    #messagesArea {
+      padding: 10px !important;
+      border-radius: var(--panel-radius) !important;
+    }
+
+    .message-line {
+      margin-bottom: 10px !important;
+    }
+
+    .message-html {
+      padding: 9px 13px !important;
+    }
+
+    @media (max-width: 900px) {
+      :root { --sidebar-width: 270px; --ui-gap: 6px; }
+      .app-shell { padding: 4px !important; }
+      .app-header h1 { font-size: 15px !important; }
+      .app-header p { display: none; }
+    }
+
+
+    /* Header fix v6: tiny but not clipped */
+    .app-header {
+      min-height: 18px !important;
+      height: 18px !important;
+      flex: 0 0 18px !important;
+      margin: 0 0 3px 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+      align-items: center !important;
+    }
+    .app-title-wrap {
+      height: 18px !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      min-width: 0 !important;
+      overflow: visible !important;
+    }
+    .app-header h1 {
+      font-size: 13px !important;
+      line-height: 18px !important;
+      font-weight: 700 !important;
+      letter-spacing: 0 !important;
+      white-space: nowrap !important;
+      overflow: visible !important;
+    }
+    .app-header p {
+      font-size: 10px !important;
+      line-height: 18px !important;
+      white-space: nowrap !important;
+      overflow: visible !important;
+    }
+
+  
+
+    /* No-overlap compact fix v7 */
+    :root {
+      --page-pad-x: 6px;
+      --page-pad-y: 4px;
+      --ui-gap: 6px;
+      --sidebar-width: 320px;
+      --panel-radius: 12px;
+      --panel-pad: 6px;
+    }
+
+    .app-shell {
+      padding: var(--page-pad-y) var(--page-pad-x) !important;
+      overflow: hidden !important;
+    }
+
+    .app-header {
+      min-height: 20px !important;
+      height: 20px !important;
+      flex: 0 0 20px !important;
+      margin: 0 0 4px 0 !important;
+      overflow: hidden !important;
+    }
+
+    .app-title-wrap {
+      height: 20px !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+
+    .app-header h1,
+    .app-header p {
+      line-height: 20px !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+    }
+
+    #mainUI:not(.hidden) {
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr) !important;
+      gap: var(--ui-gap) !important;
+      min-width: 0 !important;
+      overflow: hidden !important;
+    }
+
+    .sidebar-card,
+    .content-column {
+      min-width: 0 !important;
+      overflow: hidden !important;
+    }
+
+    .sidebar-card {
+      padding: var(--panel-pad) !important;
+      border-radius: var(--panel-radius) !important;
+    }
+
+    .sidebar-card > .font-semibold {
+      margin-bottom: 5px !important;
+      padding: 0 3px !important;
+    }
+
+    #chatSearch {
+      margin-bottom: 5px !important;
+      min-height: 30px !important;
+      height: 30px !important;
+      padding: 5px 10px !important;
+      border-radius: 13px !important;
+    }
+
+    #chatList {
+      padding-right: 2px !important;
+      overflow-x: hidden !important;
+      scrollbar-gutter: auto !important;
+    }
+
+    #chatList > :not([hidden]) ~ :not([hidden]) {
+      margin-top: 3px !important;
+    }
+
+    .chat-item {
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) max-content !important;
+      align-items: start !important;
+      column-gap: 6px !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+      overflow: hidden !important;
+      padding: 7px 8px !important;
+      min-height: 38px !important;
+      border-radius: 11px !important;
+    }
+
+    .chat-info {
+      grid-column: 1 !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+
+    .chat-title {
+      display: block !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      padding-right: 0 !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      word-break: normal !important;
+      overflow-wrap: normal !important;
+    }
+
+    .chat-item:hover .chat-title {
+      white-space: normal !important;
+      display: -webkit-box !important;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden !important;
+      text-overflow: clip !important;
+      word-break: break-word !important;
+      overflow-wrap: anywhere !important;
+    }
+
+    .chat-date {
+      max-width: 100% !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      margin-top: 1px !important;
+      line-height: 13px !important;
+    }
+
+    .chat-count {
+      grid-column: 2 !important;
+      grid-row: 1 !important;
+      align-self: start !important;
+      justify-self: end !important;
+      position: static !important;
+      z-index: 1 !important;
+      flex: 0 0 auto !important;
+      margin: 0 !important;
+      min-width: 20px !important;
+      height: 17px !important;
+      padding: 0 5px !important;
+      line-height: 17px !important;
+    }
+
+    #chatHeader {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      min-width: 0 !important;
+      overflow: hidden !important;
+      padding: 7px 10px !important;
+      min-height: 44px !important;
+      margin-bottom: var(--ui-gap) !important;
+      border-radius: var(--panel-radius) !important;
+    }
+
+    #chatHeader > div:first-child {
+      min-width: 0 !important;
+      flex: 1 1 auto !important;
+      overflow: hidden !important;
+    }
+
+    #chatTitle {
+      max-width: 100% !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+    }
+
+    #chatMeta {
+      max-width: 100% !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+    }
+
+    #chatHeader .flex.gap-2 {
+      flex: 0 0 auto !important;
+      gap: 5px !important;
+    }
+
+    #chatHeader button {
+      padding: 6px 12px !important;
+      border-radius: 13px !important;
+    }
+
+    #messagesArea {
+      padding: 8px !important;
+      border-radius: var(--panel-radius) !important;
+      min-width: 0 !important;
+      overflow-x: hidden !important;
+    }
+
+    @media (max-width: 900px) {
+      :root { --sidebar-width: 280px; --ui-gap: 5px; }
+      .app-shell { padding: 3px !important; }
+    }
+
+
+    /* Topbar fix v8: compact header, no vertical/horizontal clipping */
+    .app-header {
+      flex: 0 0 24px !important;
+      height: 24px !important;
+      min-height: 24px !important;
+      max-height: 24px !important;
+      margin: 0 0 4px 0 !important;
+      padding: 0 2px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      overflow: visible !important;
+      line-height: normal !important;
+    }
+
+    .app-title-wrap {
+      height: 24px !important;
+      max-width: none !important;
+      min-width: 0 !important;
+      width: auto !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      overflow: visible !important;
+      line-height: normal !important;
+      white-space: nowrap !important;
+    }
+
+    .app-header h1 {
+      display: inline-block !important;
+      flex: 0 0 auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      max-width: none !important;
+      font-size: 16px !important;
+      line-height: 20px !important;
+      height: 20px !important;
+      font-weight: 800 !important;
+      letter-spacing: -0.01em !important;
+      white-space: nowrap !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+    }
+
+    .app-header p {
+      display: inline-block !important;
+      flex: 0 0 auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      max-width: none !important;
+      font-size: 11px !important;
+      line-height: 16px !important;
+      height: 16px !important;
+      color: #34d399 !important;
+      white-space: nowrap !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+    }
+
+    @media (max-width: 520px) {
+      .app-header h1 { font-size: 14px !important; }
+      .app-header p { font-size: 10px !important; }
+      .app-title-wrap { gap: 6px !important; }
+    }
+
+
+
+    /* Timeline selector v9: compact histogram in the free topbar space */
+    .app-header {
+      flex: 0 0 34px !important;
+      height: 34px !important;
+      min-height: 34px !important;
+      max-height: 34px !important;
+      margin: 0 0 4px 0 !important;
+      padding: 0 2px !important;
+      gap: 10px !important;
+      overflow: visible !important;
+    }
+
+    .app-title-wrap {
+      flex: 0 0 auto !important;
+      height: 28px !important;
+      display: inline-flex !important;
+      align-items: baseline !important;
+      gap: 7px !important;
+      white-space: nowrap !important;
+    }
+
+    .app-header h1 {
+      font-size: 15px !important;
+      line-height: 18px !important;
+      height: auto !important;
+      white-space: nowrap !important;
+    }
+
+    .app-header p {
+      font-size: 10px !important;
+      line-height: 13px !important;
+      height: auto !important;
+      white-space: nowrap !important;
+    }
+
+    .timeline-bar {
+      flex: 1 1 auto;
+      min-width: 180px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow: hidden;
+    }
+
+    .timeline-bar.hidden { display: none !important; }
+
+    .timeline-reset {
+      flex: 0 0 auto;
+      height: 24px;
+      padding: 0 8px;
+      border-radius: 8px;
+      border: 1px solid #27272a;
+      background: #18181b;
+      color: #d4d4d8;
+      font-size: 11px;
+      line-height: 24px;
+      cursor: pointer;
+    }
+    .timeline-reset:hover { background: #27272a; color: white; }
+
+    .timeline-canvas-wrap {
+      position: relative;
+      flex: 1 1 auto;
+      min-width: 120px;
+      height: 28px;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      background: #050505;
+      overflow: hidden;
+    }
+
+    #timelineCanvas {
+      width: 100%;
+      height: 28px;
+      display: block;
+      cursor: crosshair;
+      user-select: none;
+    }
+
+    .timeline-label {
+      flex: 0 0 auto;
+      width: 190px;
+      color: #a1a1aa;
+      font-size: 10px;
+      line-height: 12px;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    @media (max-width: 900px) {
+      .timeline-label { width: 120px; }
+      .app-header h1 { font-size: 14px !important; }
+    }
+
+    @media (max-width: 680px) {
+      .timeline-label { display: none; }
+      .timeline-reset { padding: 0 6px; }
+      .app-header p { display: none !important; }
+    }
+
+  
+
+    /* Topbar timeline no-overlap fix v10 */
+    .app-header {
+      display: grid !important;
+      grid-template-columns: max-content minmax(0, 1fr) !important;
+      align-items: center !important;
+      column-gap: 10px !important;
+      width: 100% !important;
+      height: 28px !important;
+      min-height: 28px !important;
+      max-height: 28px !important;
+      padding: 0 4px !important;
+      margin: 0 0 4px 0 !important;
+      overflow: hidden !important;
+    }
+
+    .app-title-wrap {
+      grid-column: 1 !important;
+      width: max-content !important;
+      min-width: max-content !important;
+      max-width: none !important;
+      height: 24px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 7px !important;
+      overflow: visible !important;
+      white-space: nowrap !important;
+      z-index: 2 !important;
+    }
+
+    .app-header h1 {
+      display: inline-block !important;
+      flex: 0 0 auto !important;
+      font-size: 15px !important;
+      line-height: 20px !important;
+      height: 20px !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+      white-space: nowrap !important;
+      text-overflow: clip !important;
+    }
+
+    .app-header p {
+      display: inline-block !important;
+      flex: 0 0 auto !important;
+      font-size: 10px !important;
+      line-height: 14px !important;
+      height: 14px !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+      white-space: nowrap !important;
+      text-overflow: clip !important;
+    }
+
+    .timeline-bar {
+      grid-column: 2 !important;
+      min-width: 0 !important;
+      width: 100% !important;
+      height: 28px !important;
+      display: grid !important;
+      grid-template-columns: auto minmax(90px, 1fr) auto !important;
+      align-items: center !important;
+      gap: 6px !important;
+      overflow: hidden !important;
+      z-index: 1 !important;
+    }
+
+    .timeline-bar.hidden { display: none !important; }
+
+    .timeline-reset {
+      grid-column: 1 !important;
+      min-width: 34px !important;
+      height: 22px !important;
+      line-height: 22px !important;
+      padding: 0 7px !important;
+      border-radius: 8px !important;
+    }
+
+    .timeline-canvas-wrap {
+      grid-column: 2 !important;
+      min-width: 0 !important;
+      width: 100% !important;
+      height: 26px !important;
+    }
+
+    #timelineCanvas {
+      width: 100% !important;
+      height: 26px !important;
+    }
+
+    .timeline-label {
+      grid-column: 3 !important;
+      width: 150px !important;
+      min-width: 0 !important;
+      font-size: 10px !important;
+      line-height: 12px !important;
+    }
+
+    @media (max-width: 950px) {
+      .timeline-label { display: none !important; }
+      .timeline-bar { grid-template-columns: auto minmax(90px, 1fr) !important; }
+    }
+
+    @media (max-width: 700px) {
+      .app-header { column-gap: 6px !important; }
+      .app-header p { display: none !important; }
+      .app-header h1 { font-size: 13px !important; }
+      .timeline-reset { min-width: 28px !important; padding: 0 5px !important; font-size: 10px !important; }
+    }
+
+    @media (max-width: 520px) {
+      .app-header { grid-template-columns: max-content minmax(0, 1fr) !important; }
+      .app-header h1 { font-size: 12px !important; letter-spacing: -0.03em !important; }
+      .timeline-canvas-wrap { min-width: 70px !important; }
+    }
+
+
+
+    /* Timeline height fix v11: fit topbar contents vertically without wasting space */
+    .app-header {
+      height: 32px !important;
+      min-height: 32px !important;
+      max-height: 32px !important;
+      flex: 0 0 32px !important;
+      padding: 2px 4px !important;
+      margin: 0 0 3px 0 !important;
+      align-items: center !important;
+      overflow: visible !important;
+    }
+
+    .app-title-wrap {
+      height: 24px !important;
+      min-height: 24px !important;
+      align-items: center !important;
+      gap: 6px !important;
+      overflow: visible !important;
+    }
+
+    .app-header h1 {
+      font-size: 14px !important;
+      line-height: 18px !important;
+      height: 18px !important;
+      overflow: visible !important;
+      transform: translateY(0) !important;
+    }
+
+    .app-header p {
+      font-size: 10px !important;
+      line-height: 12px !important;
+      height: 12px !important;
+      overflow: visible !important;
+      transform: translateY(1px) !important;
+    }
+
+    .timeline-bar {
+      height: 26px !important;
+      min-height: 26px !important;
+      max-height: 26px !important;
+      align-items: center !important;
+      overflow: hidden !important;
+    }
+
+    .timeline-reset {
+      height: 20px !important;
+      line-height: 20px !important;
+      min-height: 20px !important;
+      padding: 0 7px !important;
+      font-size: 10px !important;
+      border-radius: 7px !important;
+    }
+
+    .timeline-canvas-wrap {
+      height: 22px !important;
+      min-height: 22px !important;
+      max-height: 22px !important;
+      border-radius: 7px !important;
+    }
+
+    #timelineCanvas {
+      height: 22px !important;
+    }
+
+    .timeline-label {
+      font-size: 9px !important;
+      line-height: 10px !important;
+      height: 10px !important;
+      align-self: center !important;
+    }
+
+    @media (max-width: 700px) {
+      .app-header {
+        height: 30px !important;
+        min-height: 30px !important;
+        max-height: 30px !important;
+        flex-basis: 30px !important;
+      }
+      .app-header h1 { font-size: 13px !important; line-height: 17px !important; height: 17px !important; }
+      .app-header p { display: none !important; }
+      .timeline-bar { height: 24px !important; }
+      .timeline-canvas-wrap, #timelineCanvas { height: 20px !important; }
+      .timeline-reset { height: 20px !important; line-height: 20px !important; }
+    }
+
+    @media (max-width: 520px) {
+      .app-header {
+        grid-template-columns: max-content minmax(0, 1fr) !important;
+        column-gap: 5px !important;
+      }
+      .app-header h1 { font-size: 12px !important; line-height: 16px !important; height: 16px !important; }
+      .timeline-reset { min-width: 26px !important; padding: 0 4px !important; }
+      .timeline-canvas-wrap { min-width: 64px !important; }
+    }
+
+
+    /* Topbar fill fix v12: use the empty vertical space instead of leaving black padding */
+    :root {
+      --topbar-h: 38px;
+    }
+
+    html,
+    body {
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+    }
+
+    .app-shell {
+      padding-top: 0 !important;
+      padding-left: 4px !important;
+      padding-right: 4px !important;
+      padding-bottom: 4px !important;
+    }
+
+    .app-header {
+      height: var(--topbar-h) !important;
+      min-height: var(--topbar-h) !important;
+      max-height: var(--topbar-h) !important;
+      flex: 0 0 var(--topbar-h) !important;
+      padding: 0 2px !important;
+      margin: 0 0 2px 0 !important;
+      align-items: stretch !important;
+      column-gap: 10px !important;
+      overflow: hidden !important;
+    }
+
+    .app-title-wrap {
+      height: var(--topbar-h) !important;
+      min-height: var(--topbar-h) !important;
+      align-items: center !important;
+      gap: 7px !important;
+    }
+
+    .app-header h1 {
+      font-size: 15px !important;
+      line-height: 19px !important;
+      height: 19px !important;
+      white-space: nowrap !important;
+    }
+
+    .app-header p {
+      font-size: 10px !important;
+      line-height: 12px !important;
+      height: 12px !important;
+      white-space: nowrap !important;
+    }
+
+    .timeline-bar {
+      height: var(--topbar-h) !important;
+      min-height: var(--topbar-h) !important;
+      max-height: var(--topbar-h) !important;
+      align-items: center !important;
+      gap: 6px !important;
+      overflow: hidden !important;
+    }
+
+    .timeline-reset {
+      height: 26px !important;
+      min-height: 26px !important;
+      line-height: 26px !important;
+      padding: 0 9px !important;
+      border-radius: 8px !important;
+      align-self: center !important;
+    }
+
+    .timeline-canvas-wrap {
+      height: 34px !important;
+      min-height: 34px !important;
+      max-height: 34px !important;
+      border-radius: 8px !important;
+      align-self: center !important;
+    }
+
+    #timelineCanvas {
+      height: 34px !important;
+      display: block !important;
+    }
+
+    .timeline-label {
+      font-size: 10px !important;
+      line-height: 12px !important;
+      height: 12px !important;
+      align-self: center !important;
+    }
+
+    @media (max-width: 700px) {
+      :root { --topbar-h: 36px; }
+      .app-header { column-gap: 6px !important; }
+      .app-header h1 { font-size: 13px !important; }
+      .app-header p { display: none !important; }
+      .timeline-canvas-wrap,
+      #timelineCanvas { height: 32px !important; }
+      .timeline-reset { height: 24px !important; line-height: 24px !important; }
+    }
+
+    @media (max-width: 520px) {
+      :root { --topbar-h: 34px; }
+      .app-header h1 { font-size: 12px !important; }
+      .timeline-canvas-wrap,
+      #timelineCanvas { height: 30px !important; }
+    }
+
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-200">
+  <input id="folderInput" class="hidden-input" type="file" webkitdirectory directory multiple>
+
+  <div class="app-shell">
+    <div class="app-header flex items-center">
+      <div class="app-title-wrap">
+        <h1>Grok Export Viewer</h1>
+        <p>export_data</p>
+      </div>
+
+      <div id="timelineBar" class="timeline-bar hidden" title="Drag across the timeline to select a time range. Double-click to reset." data-i18n-title="timelineBarTitle">
+        <button id="timelineReset" type="button" class="timeline-reset" title="Show all" data-i18n="timelineReset" data-i18n-title="timelineResetTitle">All</button>
+        <div class="timeline-canvas-wrap">
+          <canvas id="timelineCanvas"></canvas>
+        </div>
+        <div id="timelineLabel" class="timeline-label" data-i18n="allMessages">all messages</div>
+      </div>
+    </div>
+
+    <div id="pickerPanel" class="bg-zinc-900 border border-zinc-800 rounded-3xl p-10 text-center mb-8">
+      <button id="nativePickerButton" type="button"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white px-12 py-4 rounded-2xl text-2xl font-semibold flex items-center gap-4 mx-auto shadow-lg">
+        <i class="fas fa-folder-open text-3xl"></i>
+        <span data-i18n="chooseFolder">Choose export_data folder</span>
+      </button>
+
+      <button id="fallbackPickerButton" type="button"
+              class="mt-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 px-8 py-3 rounded-2xl text-sm font-semibold inline-flex items-center gap-3">
+        <i class="fas fa-upload"></i>
+        <span data-i18n="fallbackFolderPicker">Fallback folder picker</span>
+      </button>
+
+      <p class="text-sm text-zinc-400 mt-4 max-w-xl mx-auto" data-i18n-html="pickerHint">
+        You can choose <code>export_data</code>, the user UUID folder inside it, or even the parent folder — the script will recursively find
+        <code>prod-grok-backend.json</code> and <code>prod-mc-asset-server</code>.
+      </p>
+
+      <div id="statusBox" class="hidden mt-6 text-left max-w-3xl mx-auto bg-zinc-950 border border-zinc-800 rounded-2xl p-4 text-sm"></div>
+    </div>
+
+    <div id="mainUI" class="hidden">
+      <div class="sidebar-card w-80 bg-zinc-900 border border-zinc-800 rounded-3xl p-4 flex-shrink-0">
+        <div class="font-semibold mb-3 px-2 flex justify-between items-center">
+          <span data-i18n="chats">Chats</span>
+          <span id="chatCount" class="text-xs text-zinc-500"></span>
+        </div>
+        <input id="chatSearch" placeholder="Search chats..." data-i18n-placeholder="chatSearchPlaceholder"
+               class="w-full mb-3 bg-zinc-950 border border-zinc-800 rounded-2xl px-4 py-2 text-sm outline-none">
+        <div id="chatList" class="space-y-1 overflow-y-auto pr-1 min-h-0 flex-1"></div>
+      </div>
+
+      <div class="content-column flex-1 min-w-0">
+        <div id="chatHeader" class="hidden bg-zinc-900 border border-zinc-800 rounded-3xl px-6 py-4 mb-4 flex justify-between items-center">
+          <div class="min-w-0">
+            <div id="chatTitle" class="font-semibold text-xl truncate"></div>
+            <div id="chatMeta" class="text-xs text-zinc-500"></div>
+          </div>
+          <div class="flex gap-2 flex-shrink-0">
+            <button id="fullScreenButton" type="button" class="px-5 py-2 text-sm bg-zinc-800 rounded-2xl" data-i18n="fullscreen">Full screen</button>
+            <button id="exportButton" type="button" class="px-5 py-2 text-sm bg-zinc-800 rounded-2xl" data-i18n="exportMd">Export to MD</button>
+          </div>
+        </div>
+        <div id="messagesArea" class="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 flex-1 min-h-0 overflow-y-auto overflow-x-auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allChats = [];
+    let currentChat = null;
+    let assetIndex = {};
+
+    const UI_LOCALE = (() => {
+      const browserLanguages = (navigator.languages && navigator.languages.length)
+        ? navigator.languages
+        : [navigator.language || navigator.userLanguage || "en"];
+      return browserLanguages.some(language => String(language || "").toLowerCase().startsWith("ru")) ? "ru" : "en";
+    })();
+    const DATE_LOCALE = UI_LOCALE === "ru" ? "ru-RU" : "en-US";
+
+    const I18N = {
+      en: {
+        documentTitle: "Grok Export Viewer",
+        timelineBarTitle: "Drag across the timeline to select a time range. Double-click to reset.",
+        timelineReset: "All",
+        timelineResetTitle: "Show all",
+        allMessages: "all messages",
+        chooseFolder: "Choose export_data folder",
+        fallbackFolderPicker: "Fallback folder picker",
+        pickerHint: "You can choose <code>export_data</code>, the user UUID folder inside it, or even the parent folder — the script will recursively find <code>prod-grok-backend.json</code> and <code>prod-mc-asset-server</code>.",
+        chats: "Chats",
+        chatSearchPlaceholder: "Search chats...",
+        fullscreen: "Full screen",
+        showChats: "Show chats",
+        exportMd: "Export to MD",
+        consoleReady: "%c[Grok Export Viewer] fixed: buttons connected",
+        statusOpeningFolder: "Opening folder picker...",
+        statusFolderSelectionCanceled: "Folder selection canceled.",
+        statusNativePickerFailed: "Native folder picker failed: {0}",
+        statusPressFallback: "Click <b>Fallback folder picker</b> below.",
+        statusDirectoryPickerUnavailable: "window.showDirectoryPicker is unavailable. Click <b>Fallback folder picker</b>.",
+        statusNoFilesSelected: "No files selected.",
+        statusReadingFolderRecursive: "Reading folder recursively...",
+        statusReadingFallbackFolder: "Reading selected folder in fallback mode...",
+        statusDone: "Done: {0} chats, {1} assets found.",
+        errorSelectedFolderEmpty: "There are no files in the selected folder.",
+        errorBackendNotFoundTitle: "prod-grok-backend.json was not found",
+        errorBackendNotFoundDetail: "Choose the export_data folder, the user UUID folder, or a parent folder.",
+        errorBackendInvalidJsonTitle: "prod-grok-backend.json could not be parsed as JSON",
+        errorChatsNotFoundTitle: "No chats found",
+        errorChatsNotFoundDetail: "The JSON has no data.conversations field, or the export structure is different.",
+        errorProcessingFolderTitle: "Folder processing error",
+        untitled: "Untitled",
+        messagesCount: "{0} messages",
+        visibleOfTotalMessages: "{0} of {1} messages",
+        noMessagesInRange: "No messages in the selected time range.",
+        noChatsInRange: "No chats in the selected time range.",
+        emptyMessage: "[empty message]",
+        exportSpeakerYou: "You",
+        exportAttachments: "Attachments:",
+        noDates: "no dates"
+      },
+      ru: {
+        documentTitle: "Grok Export Viewer",
+        timelineBarTitle: "Перетащи по шкале, чтобы выбрать диапазон времени. Двойной клик — сброс.",
+        timelineReset: "Всё",
+        timelineResetTitle: "Показать всё",
+        allMessages: "все сообщения",
+        chooseFolder: "Выбрать папку export_data",
+        fallbackFolderPicker: "Запасной выбор папки",
+        pickerHint: "Можно выбрать <code>export_data</code>, папку с UUID пользователя внутри неё, или даже папку выше — скрипт рекурсивно найдёт <code>prod-grok-backend.json</code> и <code>prod-mc-asset-server</code>.",
+        chats: "Чаты",
+        chatSearchPlaceholder: "Поиск по чатам...",
+        fullscreen: "Полный экран",
+        showChats: "Показать чаты",
+        exportMd: "Экспорт в MD",
+        consoleReady: "%c[Grok Export Viewer] fixed: кнопки подключены",
+        statusOpeningFolder: "Открываю выбор папки...",
+        statusFolderSelectionCanceled: "Выбор папки отменён.",
+        statusNativePickerFailed: "Нативный выбор папки не сработал: {0}",
+        statusPressFallback: "Нажми кнопку <b>Запасной выбор папки</b> ниже.",
+        statusDirectoryPickerUnavailable: "window.showDirectoryPicker недоступен. Нажми <b>Запасной выбор папки</b>.",
+        statusNoFilesSelected: "Файлы не выбраны.",
+        statusReadingFolderRecursive: "Читаю папку рекурсивно...",
+        statusReadingFallbackFolder: "Читаю выбранную папку через запасной режим...",
+        statusDone: "Готово: чатов {0}, ассетов найдено {1}.",
+        errorSelectedFolderEmpty: "В выбранной папке нет файлов.",
+        errorBackendNotFoundTitle: "Не найден prod-grok-backend.json",
+        errorBackendNotFoundDetail: "Выбери папку export_data, папку с UUID пользователя, или папку выше.",
+        errorBackendInvalidJsonTitle: "prod-grok-backend.json не парсится как JSON",
+        errorChatsNotFoundTitle: "Чаты не найдены",
+        errorChatsNotFoundDetail: "В JSON нет data.conversations или структура экспорта отличается.",
+        errorProcessingFolderTitle: "Ошибка обработки папки",
+        untitled: "Без названия",
+        messagesCount: "{0} сообщений",
+        visibleOfTotalMessages: "{0} из {1} сообщений",
+        noMessagesInRange: "Нет сообщений в выбранном диапазоне времени.",
+        noChatsInRange: "Нет чатов в выбранном диапазоне времени.",
+        emptyMessage: "[пустое сообщение]",
+        exportSpeakerYou: "Вы",
+        exportAttachments: "Вложения:",
+        noDates: "нет дат"
+      }
+    };
+
+    function t(key, ...args) {
+      const template = (I18N[UI_LOCALE] && I18N[UI_LOCALE][key]) || I18N.en[key] || key;
+      return String(template).replace(/\{(\d+)\}/g, (_, index) => args[Number(index)] ?? "");
+    }
+
+    function applyTranslations() {
+      document.documentElement.lang = UI_LOCALE;
+      document.title = t("documentTitle");
+
+      document.querySelectorAll("[data-i18n]").forEach(element => {
+        element.textContent = t(element.dataset.i18n);
+      });
+
+      document.querySelectorAll("[data-i18n-html]").forEach(element => {
+        element.innerHTML = t(element.dataset.i18nHtml);
+      });
+
+      document.querySelectorAll("[data-i18n-title]").forEach(element => {
+        element.title = t(element.dataset.i18nTitle);
+      });
+
+      document.querySelectorAll("[data-i18n-placeholder]").forEach(element => {
+        element.placeholder = t(element.dataset.i18nPlaceholder);
+      });
+    }
+
+    const UUID_SOURCE = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+    const UUID_RE_GLOBAL = new RegExp(UUID_SOURCE, "g");
+    const UUID_RE_EXACT = new RegExp("^" + UUID_SOURCE + "$", "i");
+
+    if (window.marked && typeof marked.setOptions === "function") {
+      marked.setOptions({ gfm: true, breaks: true, tables: true });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      applyTranslations();
+      document.getElementById("nativePickerButton").addEventListener("click", selectExportDataFolder);
+      document.getElementById("fallbackPickerButton").addEventListener("click", openDirectoryInputFallback);
+      document.getElementById("chatSearch").addEventListener("input", filterChats);
+      document.getElementById("fullScreenButton").addEventListener("click", toggleFullScreen);
+      document.getElementById("exportButton").addEventListener("click", exportCurrentChat);
+      document.getElementById("timelineReset").addEventListener("click", resetTimelineFilter);
+      setupTimelinePointerEvents();
+      window.addEventListener("resize", () => renderTimelineCanvas());
+      console.log(t("consoleReady"), "color:#10b981");
+    });
+
+    async function selectExportDataFolder() {
+      clearStatus();
+      setStatus(t("statusOpeningFolder"));
+
+      if ("showDirectoryPicker" in window) {
+        try {
+          const dirHandle = await window.showDirectoryPicker({
+            id: "grok-export-data",
+            mode: "read"
+          });
+          await processDirectoryHandle(dirHandle);
+          return;
+        } catch (err) {
+          if (err && err.name === "AbortError") {
+            setStatus(t("statusFolderSelectionCanceled"));
+            return;
+          }
+          console.warn("showDirectoryPicker failed:", err);
+          setStatus(
+            t("statusNativePickerFailed", escapeHtml(err?.message || String(err))) +
+            "<br>" + t("statusPressFallback")
+          );
+          return;
+        }
+      }
+
+      setStatus(t("statusDirectoryPickerUnavailable"));
+    }
+
+    function openDirectoryInputFallback() {
+      const input = document.getElementById("folderInput");
+      input.value = "";
+      input.onchange = async () => {
+        if (!input.files || input.files.length === 0) {
+          setStatus(t("statusNoFilesSelected"));
+          return;
+        }
+        await processFileList(Array.from(input.files));
+      };
+      input.click();
+    }
+
+    async function processDirectoryHandle(rootHandle) {
+      setStatus(t("statusReadingFolderRecursive"));
+      const files = [];
+      for await (const item of walkDirectory(rootHandle)) files.push(item);
+
+      if (files.length === 0) throw new Error(t("errorSelectedFolderEmpty"));
+      await processVirtualFiles(files);
+    }
+
+    async function* walkDirectory(dirHandle, prefix = "") {
+      for await (const [name, handle] of dirHandle.entries()) {
+        const relPath = prefix ? prefix + "/" + name : name;
+        if (handle.kind === "file") {
+          const file = await handle.getFile();
+          yield { file, path: relPath };
+        } else if (handle.kind === "directory") {
+          yield* walkDirectory(handle, relPath);
+        }
+      }
+    }
+
+    async function processFileList(fileList) {
+      setStatus(t("statusReadingFallbackFolder"));
+      const virtualFiles = fileList.map(file => ({
+        file,
+        path: normalizePath(file.webkitRelativePath || file.name)
+      }));
+      await processVirtualFiles(virtualFiles);
+    }
+
+    async function processVirtualFiles(virtualFiles) {
+      try {
+        const backendCandidates = virtualFiles.filter(v => basename(v.path) === "prod-grok-backend.json");
+        if (backendCandidates.length === 0) {
+          showError(t("errorBackendNotFoundTitle"), t("errorBackendNotFoundDetail"));
+          return;
+        }
+
+        const backendText = await backendCandidates[0].file.text();
+        let data;
+        try {
+          data = JSON.parse(backendText);
+        } catch (err) {
+          showError(t("errorBackendInvalidJsonTitle"), err.message);
+          return;
+        }
+
+        assetIndex = {};
+        let assetCount = 0;
+
+        for (const v of virtualFiles) {
+          const assetId = getAssetIdFromVirtualFile(v);
+          if (!assetId) continue;
+
+          const buffer = await v.file.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          const { ext, mime } = detectAssetType(bytes, v.file.name);
+
+          if (assetIndex[assetId]?.url) URL.revokeObjectURL(assetIndex[assetId].url);
+
+          assetIndex[assetId] = {
+            id: assetId,
+            file: v.file,
+            path: v.path,
+            ext,
+            mime,
+            url: URL.createObjectURL(v.file),
+            displayName: assetId + "." + ext
+          };
+          assetCount++;
+        }
+
+        allChats = parseFullExport(data, assetIndex);
+
+        if (!allChats.length) {
+          showError(t("errorChatsNotFoundTitle"), t("errorChatsNotFoundDetail"));
+          return;
+        }
+
+        currentChat = null;
+        document.getElementById("pickerPanel").classList.add("hidden");
+        document.getElementById("mainUI").classList.remove("hidden");
+        document.getElementById("chatCount").textContent = String(allChats.length);
+        buildTimeline(allChats);
+        const firstVisibleChat = getCurrentlyFilteredChats()[0] || allChats[0];
+        renderChatList(getCurrentlyFilteredChats());
+        showChat(firstVisibleChat);
+
+        setStatus(t("statusDone", allChats.length, assetCount));
+        console.log("[Grok Export Viewer] backend:", backendCandidates[0].path);
+        console.log("[Grok Export Viewer] assets:", assetIndex);
+        console.log("[Grok Export Viewer] chats:", allChats);
+      } catch (err) {
+        showError(t("errorProcessingFolderTitle"), err?.stack || err?.message || String(err));
+      }
+    }
+
+    function getAssetIdFromVirtualFile(v) {
+      const path = normalizePath(v.path);
+      const name = basename(path);
+      const lower = path.toLowerCase();
+
+      if (lower.includes("prod-mc-asset-server/") && name.toLowerCase() === "content") {
+        const uuids = path.match(UUID_RE_GLOBAL) || [];
+        if (uuids.length > 0) return uuids[uuids.length - 1].toLowerCase();
+
+        const parent = parentFolderName(path);
+        if (UUID_RE_EXACT.test(parent)) return parent.toLowerCase();
+      }
+
+      const base = name.replace(/\.(content|bin|png|jpg|jpeg|gif|webp|pdf|txt|json|zip|csv|mp4|webm|mp3|wav)$/i, "");
+      if (UUID_RE_EXACT.test(base)) return base.toLowerCase();
+
+      return null;
+    }
+
+    function parseFullExport(data, assets) {
+      const chats = [];
+      const conversations = Array.isArray(data?.conversations)
+        ? data.conversations
+        : Array.isArray(data?.data?.conversations)
+          ? data.data.conversations
+          : [];
+
+      for (const wrapper of conversations) {
+        const conv = wrapper.conversation || wrapper;
+        const responses = wrapper.responses || conv.responses || wrapper.messages || conv.messages || [];
+
+        const messages = responses.map((item, index) => {
+          const r = item.response || item.message || item;
+          const textForUuidSearch = safeStringify(r);
+          const uuids = [...new Set((textForUuidSearch.match(UUID_RE_GLOBAL) || []).map(u => u.toLowerCase()))];
+          const linked = uuids.filter(u => assets[u]).map(u => assets[u]);
+
+          return {
+            id: r.id || r._id || r.response_id || String(index),
+            parent_response_id: r.parent_response_id || r.parentId || null,
+            sender: r.sender || r.author || r.role || "unknown",
+            message: extractMessageText(r),
+            created_at: extractDateValue(r) || extractDateValue(item) || null,
+            assets: linked,
+            raw: r
+          };
+        });
+
+        chats.push({
+          id: conv.id || conv._id || conv.conversation_id || cryptoRandomId(),
+          title: conv.title || conv.name || t("untitled"),
+          created: extractDateValue(conv) || extractDateValue(wrapper) || messages[0]?.created_at || messages[messages.length - 1]?.created_at || null,
+          raw: conv,
+          messages
+        });
+      }
+
+      return chats;
+    }
+
+    function extractMessageText(r) {
+      const candidates = [r.message, r.text, r.content, r.body, r.response, r.markdown];
+
+      for (const value of candidates) {
+        if (typeof value === "string" && value.trim()) return value;
+        if (value && typeof value === "object") {
+          const s = objectToReadableText(value);
+          if (s.trim()) return s;
+        }
+      }
+
+      const usefulKeys = ["generated_image_urls", "image_url", "image_urls", "attachments", "file_attachments", "asset_ids", "media"];
+      const pieces = [];
+      for (const key of usefulKeys) {
+        if (r[key]) pieces.push("`" + key + "`:" + "\n\n```json\n" + JSON.stringify(r[key], null, 2) + "\n```");
+      }
+
+      return pieces.join("\n\n");
+    }
+
+    function objectToReadableText(obj) {
+      if (Array.isArray(obj)) return obj.map(objectToReadableText).filter(Boolean).join("\n\n");
+      if (obj && typeof obj === "object") {
+        if (typeof obj.text === "string") return obj.text;
+        if (typeof obj.content === "string") return obj.content;
+        if (Array.isArray(obj.parts)) return obj.parts.map(objectToReadableText).filter(Boolean).join("\n\n");
+        return "```json\n" + JSON.stringify(obj, null, 2) + "\n```";
+      }
+      return "";
+    }
+
+    function renderChatList(list) {
+      const container = document.getElementById("chatList");
+      container.innerHTML = "";
+
+      list.forEach(chat => {
+        const chatDate = getChatDisplayDate(chat);
+        const visibleCount = getTimelineVisibleMessages(chat).length;
+        const displayCount = isTimelineFilterActive() ? visibleCount : chat.messages.length;
+        const div = document.createElement("div");
+        div.className = "chat-item px-4 py-3 rounded-2xl hover:bg-zinc-800 cursor-pointer flex justify-between " +
+          (currentChat?.id === chat.id ? "bg-zinc-800" : "");
+        div.title = chat.title + (chatDate ? "\n" + chatDate : "");
+
+        const info = document.createElement("div");
+        info.className = "chat-info";
+
+        const title = document.createElement("div");
+        title.className = "chat-title font-medium pr-2";
+        title.textContent = chat.title;
+
+        const date = document.createElement("div");
+        date.className = "chat-date";
+        date.textContent = chatDate || "";
+        if (!chatDate) date.classList.add("hidden");
+
+        const count = document.createElement("div");
+        count.className = "chat-count text-xs bg-zinc-800 px-2 rounded flex-shrink-0";
+        count.textContent = displayCount;
+
+        info.appendChild(title);
+        info.appendChild(date);
+        div.appendChild(info);
+        div.appendChild(count);
+        div.onclick = () => showChat(chat);
+        container.appendChild(div);
+      });
+    }
+
+    function filterChats() {
+      const filtered = getCurrentlyFilteredChats();
+      renderChatList(filtered);
+    }
+
+    function getCurrentlyFilteredChats() {
+      const q = document.getElementById("chatSearch").value.trim().toLowerCase();
+      return allChats.filter(c => {
+        const textMatches = !q || c.title.toLowerCase().includes(q) || c.messages.some(m => String(m.message || "").toLowerCase().includes(q));
+        return textMatches && chatMatchesTimeline(c);
+      });
+    }
+
+    function showChat(chat) {
+      currentChat = chat;
+      renderChatList(getCurrentlyFilteredChats());
+
+      document.getElementById("chatHeader").classList.remove("hidden");
+      const chatTitleEl = document.getElementById("chatTitle");
+      chatTitleEl.textContent = chat.title;
+      chatTitleEl.title = chat.title;
+      const visibleMessages = getTimelineVisibleMessages(chat);
+      const chatDate = formatDateMaybe(chat.created) || getChatDisplayDate(chat);
+      const countText = isTimelineFilterActive()
+        ? t("visibleOfTotalMessages", visibleMessages.length, chat.messages.length)
+        : t("messagesCount", chat.messages.length);
+      document.getElementById("chatMeta").textContent = (chatDate ? chatDate + " • " : "") + countText;
+
+      const area = document.getElementById("messagesArea");
+      area.innerHTML = "";
+
+      if (visibleMessages.length === 0) {
+        area.innerHTML = '<div class="text-zinc-500 text-sm p-4">' + escapeHtml(t("noMessagesInRange")) + '</div>';
+        return;
+      }
+
+      visibleMessages.forEach(msg => {
+        const isUser = isUserSender(msg.sender);
+        const div = document.createElement("div");
+        div.className = "message-line flex " + (isUser ? "justify-end" : "justify-start") + " mb-7";
+
+        let html = parseMarkdown(msg.message || "");
+
+        if (msg.assets && msg.assets.length > 0) {
+          html += '<div class="mt-4 space-y-2">';
+          msg.assets.forEach(a => {
+            if (a.mime.startsWith("image/")) {
+              html += '<a href="' + escapeAttr(a.url) + '" download="' + escapeAttr(a.displayName) + '" title="' + escapeAttr(a.displayName) + '">' +
+                '<img src="' + escapeAttr(a.url) + '" class="max-w-[360px] max-h-[360px] rounded-2xl border border-zinc-700 mt-2 object-contain">' +
+                '</a>';
+            } else if (a.mime.startsWith("video/")) {
+              html += '<video src="' + escapeAttr(a.url) + '" controls class="max-w-[480px] rounded-2xl border border-zinc-700 mt-2"></video>';
+            } else {
+              html += '<a href="' + escapeAttr(a.url) + '" download="' + escapeAttr(a.displayName) + '" class="text-emerald-400 flex items-center gap-2 text-sm mt-1 break-all">' +
+                '<i class="fas fa-file"></i> ' + escapeHtml(a.displayName) +
+                '</a>';
+            }
+          });
+          html += "</div>";
+        }
+
+        const messageTime = formatDateMaybe(msg.created_at) || formatDateMaybe(extractDateValue(msg.raw)) || "";
+
+        div.innerHTML = `
+          <div class="message-wrap flex gap-3 ${isUser ? "flex-row-reverse" : ""}">
+            <div class="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center ${isUser ? "bg-zinc-700" : "bg-emerald-600"}">
+              <i class="fas ${isUser ? "fa-user" : "fa-robot"}"></i>
+            </div>
+            <div class="message-bubble-col ${isUser ? "items-end" : "items-start"}">
+              ${messageTime ? `<div class="message-time">${escapeHtml(messageTime)}</div>` : ""}
+              <div class="${isUser ? "user-bubble" : "grok-bubble"} px-5 py-4 text-sm leading-relaxed message-html">
+                ${html || "<span class='text-zinc-500'>" + escapeHtml(t("emptyMessage")) + "</span>"}
+              </div>
+            </div>
+          </div>
+        `;
+        area.appendChild(div);
+      });
+
+      if (window.Prism && typeof Prism.highlightAllUnder === "function") Prism.highlightAllUnder(area);
+    }
+
+    function parseMarkdown(text) {
+      if (window.marked && typeof marked.parse === "function") return marked.parse(String(text || ""));
+      return escapeHtml(String(text || "")).replace(/\n/g, "<br>");
+    }
+
+    function isUserSender(sender) {
+      const s = String(sender || "").toLowerCase();
+      return ["human", "user", "me", "client"].includes(s);
+    }
+
+    function detectAssetType(bytes, fileName = "") {
+      const lower = fileName.toLowerCase();
+      if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return { ext: "jpg", mime: "image/jpeg" };
+      if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return { ext: "png", mime: "image/png" };
+      if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return { ext: "gif", mime: "image/gif" };
+      if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return { ext: "webp", mime: "image/webp" };
+      if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) return { ext: "pdf", mime: "application/pdf" };
+      if (bytes[0] === 0x50 && bytes[1] === 0x4B && bytes[2] === 0x03 && bytes[3] === 0x04) return { ext: "zip", mime: "application/zip" };
+      if (lower.endsWith(".mp4")) return { ext: "mp4", mime: "video/mp4" };
+      if (lower.endsWith(".webm")) return { ext: "webm", mime: "video/webm" };
+      if (lower.endsWith(".mp3")) return { ext: "mp3", mime: "audio/mpeg" };
+      if (lower.endsWith(".wav")) return { ext: "wav", mime: "audio/wav" };
+
+      try {
+        const sample = new TextDecoder("utf-8", { fatal: true }).decode(bytes.slice(0, 2048)).trim();
+        if (sample.startsWith("{") || sample.startsWith("[")) return { ext: "json", mime: "application/json" };
+        return { ext: "txt", mime: "text/plain" };
+      } catch {
+        return { ext: "bin", mime: "application/octet-stream" };
+      }
+    }
+
+    function exportCurrentChat() {
+      if (!currentChat) return;
+      let md = "# " + currentChat.title + "\n\n";
+
+      currentChat.messages.forEach(m => {
+        md += "**" + (isUserSender(m.sender) ? "Вы" : "Grok") + "**:\n\n" + (m.message || "[пустое сообщение]") + "\n\n";
+        if (m.assets?.length) {
+          md += "**Вложения:**\n";
+          m.assets.forEach(a => md += "- " + a.displayName + " (" + a.mime + ")\n");
+          md += "\n";
+        }
+        md += "---\n\n";
+      });
+
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([md], { type: "text/markdown" }));
+      a.download = sanitizeFileName(currentChat.title) + ".md";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    function toggleFullScreen() {
+      const ui = document.getElementById("mainUI");
+      const button = document.getElementById("fullScreenButton");
+      if (!ui) return;
+      ui.classList.toggle("sidebar-hidden");
+      if (button) button.textContent = ui.classList.contains("sidebar-hidden") ? t("showChats") : t("fullscreen");
+    }
+
+    function setStatus(html) {
+      const box = document.getElementById("statusBox");
+      box.classList.remove("hidden");
+      box.innerHTML = html;
+    }
+
+    function clearStatus() {
+      const box = document.getElementById("statusBox");
+      box.classList.add("hidden");
+      box.innerHTML = "";
+    }
+
+    function showError(title, detail = "") {
+      setStatus(
+        '<div class="text-red-300 font-semibold mb-2">' + escapeHtml(title) + '</div>' +
+        '<div class="text-zinc-400 whitespace-pre-wrap">' + escapeHtml(String(detail)) + '</div>'
+      );
+      console.error("[Grok Export Viewer]", title, detail);
+    }
+
+    function safeStringify(value) {
+      try { return JSON.stringify(value); } catch { return ""; }
+    }
+
+    function normalizePath(path) {
+      return String(path || "").replace(/\\/g, "/");
+    }
+
+    function basename(path) {
+      const parts = normalizePath(path).split("/");
+      return parts[parts.length - 1] || "";
+    }
+
+    function parentFolderName(path) {
+      const parts = normalizePath(path).split("/").filter(Boolean);
+      return parts[parts.length - 2] || "";
+    }
+
+    function getChatDisplayDate(chat) {
+      const messages = isTimelineFilterActive() ? getTimelineVisibleMessages(chat) : (Array.isArray(chat?.messages) ? chat.messages : []);
+
+      // В боковом списке показываем дату последнего видимого сообщения.
+      for (const m of [...messages].reverse()) {
+        const d = getMessageDate(m);
+        if (d) return formatDateMaybe(d);
+      }
+
+      return formatDateMaybe(chat?.created) || formatDateMaybe(extractDateValue(chat?.raw)) || "";
+    }
+
+
+    const timelineState = {
+      points: [],
+      min: null,
+      max: null,
+      selectedMin: null,
+      selectedMax: null,
+      dragStartMs: null,
+      dragging: false,
+      histogram: []
+    };
+
+    function buildTimeline(chats) {
+      const points = [];
+      for (const chat of chats || []) {
+        for (const msg of chat.messages || []) {
+          const d = getMessageDate(msg);
+          if (d) points.push(d.getTime());
+        }
+      }
+
+      points.sort((a, b) => a - b);
+      timelineState.points = points;
+
+      const bar = document.getElementById("timelineBar");
+      if (!points.length) {
+        bar.classList.add("hidden");
+        return;
+      }
+
+      let min = points[0];
+      let max = points[points.length - 1];
+      if (min === max) {
+        min -= 12 * 60 * 60 * 1000;
+        max += 12 * 60 * 60 * 1000;
+      }
+
+      const pad = Math.max((max - min) * 0.015, 60 * 60 * 1000);
+      timelineState.min = min - pad;
+      timelineState.max = max + pad;
+      timelineState.selectedMin = timelineState.min;
+      timelineState.selectedMax = timelineState.max;
+      rebuildTimelineHistogram();
+      bar.classList.remove("hidden");
+      updateTimelineLabel();
+      requestAnimationFrame(renderTimelineCanvas);
+    }
+
+    function rebuildTimelineHistogram() {
+      const bins = 180;
+      const hist = new Array(bins).fill(0);
+      const min = timelineState.min;
+      const max = timelineState.max;
+      const span = Math.max(1, max - min);
+
+      for (const t of timelineState.points) {
+        const i = Math.max(0, Math.min(bins - 1, Math.floor(((t - min) / span) * bins)));
+        hist[i]++;
+      }
+
+      timelineState.histogram = hist;
+    }
+
+    function setupTimelinePointerEvents() {
+      const canvas = document.getElementById("timelineCanvas");
+      if (!canvas) return;
+
+      canvas.addEventListener("pointerdown", event => {
+        if (!timelineState.points.length) return;
+        canvas.setPointerCapture(event.pointerId);
+        const ms = timelineMsFromEvent(event);
+        timelineState.dragging = true;
+        timelineState.dragStartMs = ms;
+        timelineState.selectedMin = ms;
+        timelineState.selectedMax = ms;
+        updateTimelineLabel();
+        renderTimelineCanvas();
+        event.preventDefault();
+      });
+
+      canvas.addEventListener("pointermove", event => {
+        if (!timelineState.dragging) return;
+        const ms = timelineMsFromEvent(event);
+        timelineState.selectedMin = Math.min(timelineState.dragStartMs, ms);
+        timelineState.selectedMax = Math.max(timelineState.dragStartMs, ms);
+        enforceMinimumTimelineSelection();
+        updateTimelineLabel();
+        renderTimelineCanvas();
+      });
+
+      canvas.addEventListener("pointerup", event => {
+        if (!timelineState.dragging) return;
+        timelineState.dragging = false;
+        const ms = timelineMsFromEvent(event);
+        timelineState.selectedMin = Math.min(timelineState.dragStartMs, ms);
+        timelineState.selectedMax = Math.max(timelineState.dragStartMs, ms);
+        enforceMinimumTimelineSelection();
+        applyTimelineFilter();
+      });
+
+      canvas.addEventListener("pointercancel", () => {
+        timelineState.dragging = false;
+      });
+
+      canvas.addEventListener("dblclick", event => {
+        event.preventDefault();
+        resetTimelineFilter();
+      });
+    }
+
+    function timelineMsFromEvent(event) {
+      const canvas = document.getElementById("timelineCanvas");
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+      const ratio = rect.width > 0 ? x / rect.width : 0;
+      return timelineState.min + ratio * (timelineState.max - timelineState.min);
+    }
+
+    function enforceMinimumTimelineSelection() {
+      const minSpan = Math.max((timelineState.max - timelineState.min) / 300, 60 * 1000);
+      if (timelineState.selectedMax - timelineState.selectedMin < minSpan) {
+        const mid = (timelineState.selectedMin + timelineState.selectedMax) / 2;
+        timelineState.selectedMin = Math.max(timelineState.min, mid - minSpan / 2);
+        timelineState.selectedMax = Math.min(timelineState.max, mid + minSpan / 2);
+      }
+    }
+
+    function renderTimelineCanvas() {
+      const canvas = document.getElementById("timelineCanvas");
+      if (!canvas || !timelineState.points.length || canvas.offsetParent === null) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.max(1, Math.floor(rect.width * dpr));
+      const height = Math.max(1, Math.floor(rect.height * dpr));
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#050505";
+      ctx.fillRect(0, 0, width, height);
+
+      const hist = timelineState.histogram;
+      const maxCount = Math.max(1, ...hist);
+      const binW = width / hist.length;
+
+      for (let i = 0; i < hist.length; i++) {
+        if (!hist[i]) continue;
+        const h = Math.max(1, (hist[i] / maxCount) * (height - 7));
+        ctx.fillStyle = "#d4d4d8";
+        ctx.fillRect(Math.floor(i * binW), height - h - 2, Math.max(1, Math.ceil(binW)), h);
+      }
+
+      const min = timelineState.min;
+      const span = Math.max(1, timelineState.max - min);
+      const x1 = ((timelineState.selectedMin - min) / span) * width;
+      const x2 = ((timelineState.selectedMax - min) / span) * width;
+      const left = Math.max(0, Math.min(x1, x2));
+      const right = Math.min(width, Math.max(x1, x2));
+
+      if (isTimelineFilterActive()) {
+        ctx.fillStyle = "rgba(250, 204, 21, 0.28)";
+        ctx.fillRect(left, 0, Math.max(1, right - left), height);
+        ctx.fillStyle = "#facc15";
+        ctx.fillRect(Math.round(left), 0, 2 * dpr, height);
+        ctx.fillRect(Math.round(right), 0, 2 * dpr, height);
+      }
+
+      drawTimelineTickLabels(ctx, width, height, dpr);
+    }
+
+    function drawTimelineTickLabels(ctx, width, height, dpr) {
+      const minDate = new Date(timelineState.min);
+      const maxDate = new Date(timelineState.max);
+      ctx.font = Math.round(9 * dpr) + "px system-ui, sans-serif";
+      ctx.textBaseline = "top";
+      ctx.fillStyle = "#71717a";
+      const left = shortTimelineDate(minDate);
+      const right = shortTimelineDate(maxDate);
+      ctx.fillText(left, 4 * dpr, 2 * dpr);
+      const rightW = ctx.measureText(right).width;
+      ctx.fillText(right, width - rightW - 4 * dpr, 2 * dpr);
+    }
+
+    function shortTimelineDate(d) {
+      if (!(d instanceof Date) || Number.isNaN(d.getTime())) return "";
+      return d.toLocaleDateString(DATE_LOCALE, { day: "2-digit", month: "2-digit", year: "2-digit" });
+    }
+
+    function updateTimelineLabel() {
+      const label = document.getElementById("timelineLabel");
+      if (!label) return;
+      if (!timelineState.points.length || !isTimelineFilterActive()) {
+        label.textContent = timelineState.points.length ? t("messagesCount", timelineState.points.length) : t("noDates");
+        return;
+      }
+
+      label.textContent = formatTimelineRange(timelineState.selectedMin, timelineState.selectedMax);
+    }
+
+    function formatTimelineRange(min, max) {
+      const a = new Date(min);
+      const b = new Date(max);
+      const sameDay = a.toDateString() === b.toDateString();
+      if (sameDay) {
+        return a.toLocaleDateString(DATE_LOCALE) + " " +
+          a.toLocaleTimeString(DATE_LOCALE, { hour: "2-digit", minute: "2-digit" }) + "–" +
+          b.toLocaleTimeString(DATE_LOCALE, { hour: "2-digit", minute: "2-digit" });
+      }
+      return a.toLocaleDateString(DATE_LOCALE) + "–" + b.toLocaleDateString(DATE_LOCALE);
+    }
+
+    function resetTimelineFilter() {
+      if (!timelineState.points.length) return;
+      timelineState.selectedMin = timelineState.min;
+      timelineState.selectedMax = timelineState.max;
+      applyTimelineFilter();
+    }
+
+    function applyTimelineFilter() {
+      updateTimelineLabel();
+      renderTimelineCanvas();
+      const filtered = getCurrentlyFilteredChats();
+      renderChatList(filtered);
+      document.getElementById("chatCount").textContent = isTimelineFilterActive()
+        ? (filtered.length + " / " + allChats.length)
+        : String(allChats.length);
+
+      if (!currentChat || !filtered.some(c => c.id === currentChat.id)) {
+        if (filtered[0]) showChat(filtered[0]);
+        else {
+          currentChat = null;
+          document.getElementById("messagesArea").innerHTML = '<div class="text-zinc-500 text-sm p-4">' + escapeHtml(t("noChatsInRange")) + '</div>';
+        }
+      } else {
+        showChat(currentChat);
+      }
+    }
+
+    function isTimelineFilterActive() {
+      if (!timelineState.points.length || timelineState.min === null || timelineState.max === null) return false;
+      const tolerance = Math.max(1, (timelineState.max - timelineState.min) * 0.001);
+      return timelineState.selectedMin > timelineState.min + tolerance || timelineState.selectedMax < timelineState.max - tolerance;
+    }
+
+    function getMessageDate(msg) {
+      return coerceToDate(msg?.created_at) || coerceToDate(extractDateValue(msg?.raw)) || null;
+    }
+
+    function getTimelineVisibleMessages(chat) {
+      const messages = Array.isArray(chat?.messages) ? chat.messages : [];
+      if (!isTimelineFilterActive()) return messages;
+      return messages.filter(messageInTimelineRange);
+    }
+
+    function messageInTimelineRange(msg) {
+      const d = getMessageDate(msg);
+      if (!d) return false;
+      const t = d.getTime();
+      return t >= timelineState.selectedMin && t <= timelineState.selectedMax;
+    }
+
+    function chatMatchesTimeline(chat) {
+      if (!isTimelineFilterActive()) return true;
+      return getTimelineVisibleMessages(chat).length > 0;
+    }
+
+    function formatDate(value) {
+      return formatDateMaybe(value) || "";
+    }
+
+    function formatDateMaybe(value) {
+      const d = coerceToDate(value);
+      if (!d) return null;
+
+      return d.toLocaleDateString(DATE_LOCALE) + " " + d.toLocaleTimeString(DATE_LOCALE, { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function extractDateValue(obj) {
+      if (!obj || typeof obj !== "object") return null;
+
+      const directKeys = [
+        "created_at", "create_time", "created", "creation_time", "created_time",
+        "createdAt", "createTime", "creationTime", "createdTime",
+        "timestamp", "time", "date", "datetime",
+        "last_message_at", "lastMessageAt", "updated_at", "updatedAt", "update_time", "updateTime"
+      ];
+
+      for (const key of directKeys) {
+        if (Object.prototype.hasOwnProperty.call(obj, key) && obj[key] !== undefined && obj[key] !== null && obj[key] !== obj) {
+          return obj[key];
+        }
+      }
+
+      // Fallback для вариантов с другим регистром: createdAt / created_at / CreateTime и т.п.
+      const wanted = new Set(directKeys.map(k => k.toLowerCase()));
+      for (const key of Object.keys(obj)) {
+        if (wanted.has(key.toLowerCase()) && obj[key] !== undefined && obj[key] !== null && obj[key] !== obj) {
+          return obj[key];
+        }
+      }
+
+      return null;
+    }
+
+    function coerceToDate(value) {
+      if (value === null || value === undefined || value === "") return null;
+
+      if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+      }
+
+      if (typeof value === "number") {
+        return dateFromTimestampNumber(value);
+      }
+
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+
+        // Numeric timestamps sometimes arrive as strings.
+        if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+          return dateFromTimestampNumber(Number(trimmed));
+        }
+
+        const d = new Date(trimmed);
+        return Number.isNaN(d.getTime()) ? null : d;
+      }
+
+      if (typeof value === "object") {
+        // Common JSON/Mongo/Firebase/Firestore/protobuf shapes.
+        const directKeys = [
+          "$date", "$numberLong", "$numberInt", "date", "iso", "isoString", "datetime", "timestamp",
+          "time", "value", "created_at", "create_time", "created", "creation_time", "created_time",
+          "createdAt", "createTime", "creationTime", "createdTime",
+          "updated_at", "updatedAt", "updated", "update_time", "updateTime",
+          "last_message_at", "lastMessageAt"
+        ];
+
+        for (const key of directKeys) {
+          if (value[key] !== undefined && value[key] !== null && value[key] !== value) {
+            const d = coerceToDate(value[key]);
+            if (d) return d;
+          }
+        }
+
+        const seconds = firstFiniteNumber(
+          value.seconds, value._seconds, value.secs, value.sec,
+          value.epochSeconds, value.epoch_seconds, value.unix, value.unixSeconds
+        );
+        if (seconds !== null) {
+          const nanos = firstFiniteNumber(value.nanoseconds, value._nanoseconds, value.nanos, value.nano) || 0;
+          return dateFromTimestampNumber(seconds * 1000 + nanos / 1000000, true);
+        }
+
+        // Some exports store millisecond timestamp as { ms: ... } or { millis: ... }.
+        const millis = firstFiniteNumber(
+          value.ms, value.millis, value.milliseconds, value._milliseconds,
+          value.epochMillis, value.epoch_millis, value.timestampMs, value.timestamp_ms
+        );
+        if (millis !== null) return dateFromTimestampNumber(millis, true);
+
+        return null;
+      }
+
+      return null;
+    }
+
+    function firstFiniteNumber(...values) {
+      for (const v of values) {
+        if (v === null || v === undefined || v === "") continue;
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+      }
+      return null;
+    }
+
+    function dateFromTimestampNumber(n, alreadyMillis = false) {
+      if (!Number.isFinite(n)) return null;
+
+      let ms = n;
+      if (!alreadyMillis) {
+        const abs = Math.abs(n);
+        // seconds, milliseconds, microseconds, nanoseconds
+        if (abs < 100000000000) ms = n * 1000;
+        else if (abs > 1000000000000000) ms = n / 1000000;
+        else if (abs > 10000000000000) ms = n / 1000;
+      }
+
+      const d = new Date(ms);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    function sanitizeFileName(name) {
+      return String(name || "chat").replace(/[^а-яА-Яa-zA-Z0-9._-]+/g, "_").slice(0, 120);
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value).replaceAll("`", "&#096;");
+    }
+
+    function cryptoRandomId() {
+      if (window.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+      return "id_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    }
+  </script>
+</body>
+</html>
